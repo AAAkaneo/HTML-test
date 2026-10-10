@@ -350,28 +350,56 @@ const SE = {
 };
 function createSound({host=globalThis,storage=host.localStorage,onChange=()=>{}}={}){
  let bgm=null,ctx=null,master=null,muted=false,unlocked=false,unavailable=false,voices=new Set(),lastPlayed=null;
- try{muted=storage?.getItem('ninestone-muted-v1')==='true';}catch{}
+ try{muted=storage?.getItem('ninestone-muted-v1')==='true';
+}catch{}
  const status=()=>({muted,unlocked,unavailable,running:ctx?.state==='running',activeVoices:voices.size,bgmActive:!!bgm?.active,lastPlayed});
- function changed(){onChange(status());}
- function silence(){bgm?.stop();for(const osc of voices){try{osc.stop();}catch{}}voices.clear();}
- function applyMute(){if(master&&ctx){master.gain.cancelScheduledValues(ctx.currentTime);master.gain.setTargetAtTime(muted?0:.24,ctx.currentTime,.008);}if(muted)silence();}
+ function changed(){onChange(status());
+}
+ function silence(){bgm?.stop();
+for(const osc of voices){try{osc.stop();
+}catch{}}voices.clear();
+}
+ function applyMute(){if(master&&ctx){master.gain.cancelScheduledValues(ctx.currentTime);
+master.gain.setTargetAtTime(muted?0:.24,ctx.currentTime,.008);
+}if(muted)silence();
+}
  // Must be called directly from a genuine click/tap/key handler, before awaiting.
  function unlock(){
   if(muted)return Promise.resolve(false);
   try{
    if(!ctx||ctx.state==='closed'){
     const Audio=host.AudioContext||host.webkitAudioContext;
-    if(!Audio){unavailable=true;changed();return Promise.resolve(false);}
-    ctx=new Audio({latencyHint:'interactive'});master=ctx.createGain();master.gain.value=.24;master.connect(ctx.destination);
+    if(!Audio){unavailable=true;
+changed();
+return Promise.resolve(false);
+}
+    ctx=new Audio({latencyHint:'interactive'});
+master=ctx.createGain();
+master.gain.value=.24;
+master.connect(ctx.destination);
     bgm=createBgm(ctx,master);
     ctx.addEventListener?.('statechange',changed);
    }
    unavailable=false;
    // A silent one-sample buffer within the gesture unlocks older iOS Safari too.
-   const silent=ctx.createBufferSource();silent.buffer=ctx.createBuffer(1,1,ctx.sampleRate);silent.connect(master);silent.start();silent.onended=()=>silent.disconnect();
+   const silent=ctx.createBufferSource();
+silent.buffer=ctx.createBuffer(1,1,ctx.sampleRate);
+silent.connect(master);
+silent.start();
+silent.onended=()=>silent.disconnect();
    const resume=ctx.state==='running'?Promise.resolve():ctx.resume();
-   return Promise.resolve(resume).then(()=>{unlocked=ctx.state==='running';if(unlocked&&!muted&&!host.document?.hidden){try{bgm.start();}catch{}}changed();return unlocked;}).catch(()=>{unlocked=false;changed();return false;});
-  }catch{unavailable=true;changed();return Promise.resolve(false);}
+   return Promise.resolve(resume).then(()=>{unlocked=ctx.state==='running';
+if(unlocked&&!muted&&!host.document?.hidden){try{bgm.start();
+}catch{}}changed();
+return unlocked;
+}).catch(()=>{unlocked=false;
+changed();
+return false;
+});
+  }catch{unavailable=true;
+changed();
+return Promise.resolve(false);
+}
  }
  function play(name){
   if(muted||!unlocked||ctx?.state!=='running'||host.document?.hidden||!SE[name])return false;
@@ -380,20 +408,49 @@ function createSound({host=globalThis,storage=host.localStorage,onChange=()=>{}}
    for(const [from,to,length,delay,type,level] of SE[name]){
     if(voices.size>=18)break;
     const osc=ctx.createOscillator(),gain=ctx.createGain(),at=now+delay;
-    osc.type=type;osc.frequency.setValueAtTime(from,at);osc.frequency.exponentialRampToValueAtTime(to,at+length);
-    gain.gain.setValueAtTime(.0001,at);gain.gain.exponentialRampToValueAtTime(level,at+.006);gain.gain.exponentialRampToValueAtTime(.0001,at+length);
-    osc.connect(gain);gain.connect(master);voices.add(osc);
-    osc.onended=()=>{voices.delete(osc);osc.disconnect();gain.disconnect();};osc.start(at);osc.stop(at+length+.015);
+    osc.type=type;
+osc.frequency.setValueAtTime(from,at);
+osc.frequency.exponentialRampToValueAtTime(to,at+length);
+    gain.gain.setValueAtTime(.0001,at);
+gain.gain.exponentialRampToValueAtTime(level,at+.006);
+gain.gain.exponentialRampToValueAtTime(.0001,at+length);
+    osc.connect(gain);
+gain.connect(master);
+voices.add(osc);
+    osc.onended=()=>{voices.delete(osc);
+osc.disconnect();
+gain.disconnect();
+};
+osc.start(at);
+osc.stop(at+length+.015);
    }
-   lastPlayed=name;changed();return true;
-  }catch{return false;}
+   lastPlayed=name;
+changed();
+return true;
+  }catch{return false;
+}
  }
- function playFamiliar(type){const name={attack:'familiarAttack',defense:'familiarDefense',support:'familiarSupport'}[type];return name?play(name):false;}
- function toggle(){muted=!muted;try{storage?.setItem('ninestone-muted-v1',String(muted));}catch{}applyMute();changed();if(!muted)return unlock().then(ok=>{if(ok)play('place');return ok;});return Promise.resolve(false);}
- host.document?.addEventListener?.('visibilitychange',()=>{if(host.document.hidden){silence();if(ctx?.state==='running')ctx.suspend().catch(()=>{});unlocked=false;changed();}});
+ function playFamiliar(type){const name={attack:'familiarAttack',defense:'familiarDefense',support:'familiarSupport'}[type];
+return name?play(name):false;
+}
+ function toggle(){muted=!muted;
+try{storage?.setItem('ninestone-muted-v1',String(muted));
+}catch{}applyMute();
+changed();
+if(!muted)return unlock().then(ok=>{if(ok)play('place');
+return ok;
+});
+return Promise.resolve(false);
+}
+ host.document?.addEventListener?.('visibilitychange',()=>{if(host.document.hidden){silence();
+if(ctx?.state==='running')ctx.suspend().catch(()=>{});
+unlocked=false;
+changed();
+}});
  return {unlock,play,playFamiliar,toggle,status};
 }
-function soundForFrame(event){return event.kind==='encounter'?'encounter':event.kind==='found'?'found':event.kind==='rest'?'rest':event.kind==='enemy-charge'?'charge':event.kind==='enemy-heal'?'heal':event.kind==='outgoing'?'attack':event.kind==='block'&&event.value>0?'block':event.kind==='player-hit'&&event.value>0?'damage':event.kind==='heal'&&event.value>0?'heal':event.kind==='victory'?'victory':null;}
+function soundForFrame(event){return event.kind==='encounter'?'encounter':event.kind==='found'?'found':event.kind==='rest'?'rest':event.kind==='enemy-charge'?'charge':event.kind==='enemy-heal'?'heal':event.kind==='outgoing'?'attack':event.kind==='block'&&event.value>0?'block':event.kind==='player-hit'&&event.value>0?'damage':event.kind==='heal'&&event.value>0?'heal':event.kind==='victory'?'victory':null;
+}
 
 Object.assign(__exports,{SE,createSound,soundForFrame});
 },
@@ -403,10 +460,13 @@ Object.assign(__exports,{SE,createSound,soundForFrame});
 function createBgm(ctx, output){
  let buffer=null,source=null;
  function build(){
-  const rate=ctx.sampleRate,length=32;const b=ctx.createBuffer(1,rate*length,rate),data=b.getChannelData(0);
+  const rate=ctx.sampleRate,length=32;
+const b=ctx.createBuffer(1,rate*length,rate),data=b.getChannelData(0);
   function note(midi,at,duration,volume,bright=false){
    const hz=440*2**((midi-69)/12),start=Math.floor(at*rate),n=Math.floor(duration*rate);
-   for(let i=0;i<n&&start+i<data.length;i++){
+   for(let i=0;
+i<n&&start+i<data.length;
+i++){
     const t=i/rate,env=Math.min(1,t/.035)*Math.min(1,(duration-t)/.18);
     const wave=Math.sin(2*Math.PI*hz*t)+(bright?.22*Math.sin(6*Math.PI*hz*t):0);
     data[start+i]+=wave*env*volume;
@@ -414,14 +474,29 @@ function createBgm(ctx, output){
   }
   const roots=[38,34,41,36,38,34,33,36];
   const melody=[69,null,65,64,62,null,57,null,65,null,69,67,64,null,60,null,69,null,72,69,65,null,64,null,61,null,64,67,64,null,61,null];
-  roots.forEach((root,bar)=>{note(root,bar*4,3.8,.045);note(root+19,bar*4+2,1.65,.014);});
-  melody.forEach((n,i)=>{if(n!==null)note(n,i,.68,.022,true);});
+  roots.forEach((root,bar)=>{note(root,bar*4,3.8,.045);
+note(root+19,bar*4+2,1.65,.014);
+});
+  melody.forEach((n,i)=>{if(n!==null)note(n,i,.68,.022,true);
+});
   return b;
  }
  return {
-  start(){if(source)return;buffer??=build();source=ctx.createBufferSource();source.buffer=buffer;source.loop=true;source.connect(output);source.start();},
-  stop(){if(!source)return;try{source.stop();}catch{}source.disconnect();source=null;},
-  get active(){return !!source;}
+  start(){if(source)return;
+buffer??=build();
+source=ctx.createBufferSource();
+source.buffer=buffer;
+source.loop=true;
+source.connect(output);
+source.start();
+},
+  stop(){if(!source)return;
+try{source.stop();
+}catch{}source.disconnect();
+source=null;
+},
+  get active(){return !!source;
+}
  };
 }
 
@@ -472,8 +547,10 @@ const ENEMIES = [
  {id:'moth',name:'封じ蛾',subtitle:'石の光を食べる、塔の害虫。',minFloor:8,hp:20,attack:6,ability:'奇数ターンに核石以外の石1つを封印。'}
 ];
 const EVENTS = [{id:'enemy',weight:52},{id:'safe',weight:23},{id:'stone',weight:17},{id:'spring',weight:8}];
-function maxActions(floor,pillar=null){return CONFIG.baseActions+CONFIG.actionMilestones.reduce((n,m)=>n+(floor>=m.floor?m.bonus:0),0)+(pillarMods(Array.isArray(pillar)?pillar:[]).actions||0);}
-function scaleEnemy(template,floor,elite=false){return {...template,maxHp:template.hp+Math.floor(floor*1.35)+(elite?12+Math.floor(floor*.3):0),attack:template.attack+Math.floor(floor/5)+(elite?2:0),elite};}
+function maxActions(floor,pillar=null){return CONFIG.baseActions+CONFIG.actionMilestones.reduce((n,m)=>n+(floor>=m.floor?m.bonus:0),0)+(pillarMods(Array.isArray(pillar)?pillar:[]).actions||0);
+}
+function scaleEnemy(template,floor,elite=false){return {...template,maxHp:template.hp+Math.floor(floor*1.35)+(elite?12+Math.floor(floor*.3):0),attack:template.attack+Math.floor(floor/5)+(elite?2:0),elite};
+}
 
 Object.assign(__exports,{CONFIG,STONES,NORMAL_STONE_KEYS,normalStoneCandidates,UPPER_STONES,stoneFamily,STONE_KEYS,ENEMIES,EVENTS,maxActions,scaleEnemy});
 },
@@ -793,20 +870,34 @@ function pillarMods(board){
  }
  return mods;
 }
-function syncPillarHealth(state,baseMaxHp=48){state.maxHp=Math.max(1,baseMaxHp+(pillarMods(state.board).maxHpDelta||0));state.hp=Math.min(state.hp,state.maxHp);}
-
-function rollPillars(rng=Math.random,current=null){
- const pool=PILLARS.filter(p=>p.id!==current),out=[];
- while(out.length<3&&pool.length){const i=Math.min(pool.length-1,Math.floor(rng()*pool.length));out.push(pool.splice(i,1)[0]);}
- return out.map(p=>p.id);
+function syncPillarHealth(state,baseMaxHp=48){state.maxHp=Math.max(1,baseMaxHp+(pillarMods(state.board).maxHpDelta||0));
+state.hp=Math.min(state.hp,state.maxHp);
 }
-function rollMilestoneRewards(rng=Math.random){
- const out=[rng()<.5?'potion':'training'],pool=[...PILLARS.map(p=>p.id),'potion','training'].filter(id=>!out.includes(id));
- while(out.length<3&&pool.length){const i=Math.min(pool.length-1,Math.floor(rng()*pool.length));out.push(pool.splice(i,1)[0]);}
+
+function drawUnique(pool,count,rng,initial=[]){
+ const out=[...initial];
+ while(out.length<count&&pool.length){
+  const i=Math.min(pool.length-1,Math.floor(rng()*pool.length));
+  out.push(pool.splice(i,1)[0]);
+ }
  return out;
 }
+function rollPillars(rng=Math.random,current=null){
+ const pool=PILLARS.filter(p=>p.id!==current);
+ return drawUnique(pool,3,rng).map(p=>p.id);
+}
+function rollMilestoneRewards(rng=Math.random){
+ const first=rng()<.5?'potion':'training';
+ const pool=[...PILLARS.map(p=>p.id),'potion','training'].filter(id=>id!==first);
+ return drawUnique(pool,3,rng,[first]);
+}
 function applyPillarStats(stats,board,state=null){
- const m=pillarMods(board);if(!activePillars(board).length){stats.attack=Math.max(1,stats.attack);stats.defense=Math.max(0,Math.min(6,stats.defense));stats.regen=Math.max(0,Math.min(3,stats.regen));return stats;}
+ const m=pillarMods(board);
+if(!activePillars(board).length){stats.attack=Math.max(1,stats.attack);
+stats.defense=Math.max(0,Math.min(6,stats.defense));
+stats.regen=Math.max(0,Math.min(3,stats.regen));
+return stats;
+}
  const b=board.map((stone,i)=>i===state?.sealed&&!m.ignoreSeal?null:stone),stones=b.filter(Boolean),corners=[0,2,6,8].filter(i=>b[i]),variety=new Set(stones).size;
  const coreNeighbors=[1,3,5,7].filter(i=>b[i]).length;
  const count=(key)=>stones.filter(x=>x===key||x==='upper:'+key).length;
@@ -824,7 +915,16 @@ function applyPillarStats(stats,board,state=null){
  if(hp>=maxHp&&m.defenseAtFullHp)defense+=m.defenseAtFullHp;
  if(hp<=maxHp/2&&m.defenseAtLowHp)defense+=m.defenseAtLowHp;
  if(round%2===0&&m.evenRoundDefense)defense+=m.evenRoundDefense;
- if(m.defenseVsHeavy&&state?.enemy){const e=state.enemy,kind=e.archetype||e.id;let incoming=e.attack;if(kind==='skull'&&e.hp<=e.maxHp/2)incoming+=3;if(kind==='crab'&&round%3===0)incoming+=5;if(kind==='bell'){if(round%2===1)incoming=0;else incoming+=4;}if(kind==='fungus'&&round%3===0)incoming=0;if(incoming)incoming=Math.max(1,Math.floor((incoming+(m.enemyAttackFlat||0))*(m.enemyAttackMult??1)*(e.elite?(m.eliteAttackMult??1):1)));if(incoming>=10)defense+=m.defenseVsHeavy;}
+ if(m.defenseVsHeavy&&state?.enemy){const e=state.enemy,kind=e.archetype||e.id;
+let incoming=e.attack;
+if(kind==='skull'&&e.hp<=e.maxHp/2)incoming+=3;
+if(kind==='crab'&&round%3===0)incoming+=5;
+if(kind==='bell'){if(round%2===1)incoming=0;
+else incoming+=4;
+}if(kind==='fungus'&&round%3===0)incoming=0;
+if(incoming)incoming=Math.max(1,Math.floor((incoming+(m.enemyAttackFlat||0))*(m.enemyAttackMult??1)*(e.elite?(m.eliteAttackMult??1):1)));
+if(incoming>=10)defense+=m.defenseVsHeavy;
+}
  stats.defense=Math.max(0,Math.min(m.defenseCap??6,Math.floor(defense)));
  let regen=preRegen*(m.regenMult??1)+(m.regenFlat||0)+count('moss')*(m.regenPerMoss||0)+count('tide')*(m.regenPerTide||0)+count('mirror')*(m.regenPerMirror||0);
  const healingMult=m.healingMult??1;
@@ -838,10 +938,14 @@ function modifyIntent(action,state){
  const m=pillarMods(state?.board);
  const next={...action};
  if(next.kind==='heal'&&next.heal)next.heal=Math.max(1,Math.floor((next.heal+(m.enemyHealFlat||0))*(m.enemyHealMult??1)));
- if(next.damage){let mult=m.enemyAttackMult??1;if(state.enemy?.elite)mult*=m.eliteAttackMult??1;next.damage=Math.max(1,Math.floor((next.damage+(m.enemyAttackFlat||0))*mult));}
+ if(next.damage){let mult=m.enemyAttackMult??1;
+if(state.enemy?.elite)mult*=m.eliteAttackMult??1;
+next.damage=Math.max(1,Math.floor((next.damage+(m.enemyAttackFlat||0))*mult));
+}
  return next;
 }
-function pillarCombat(state){return pillarMods(state?.board);}
+function pillarCombat(state){return pillarMods(state?.board);
+}
 function applyPillarChoice(state,id){
  if(state.phase!=='choice'||!state.pillarOffers?.length)return null;
  if(!state.pillarOffers.includes(id))return null;
@@ -850,15 +954,23 @@ function applyPillarChoice(state,id){
   if(state.floor<30||state.floor%10!==0)return null;
   let healed=0;
   if(id==='potion'){
-   healed=Math.min(30,Math.max(0,state.maxHp-state.hp));state.hp+=healed;
+   healed=Math.min(30,Math.max(0,state.maxHp-state.hp));
+state.hp+=healed;
   }else{
-   state.baseAttack=(state.baseAttack??5)+1;state.baseMaxHp=(state.baseMaxHp??48)+1;syncPillarHealth(state,state.baseMaxHp);
-   healed=Math.min(10,Math.max(0,state.maxHp-state.hp));state.hp+=healed;
+   state.baseAttack=(state.baseAttack??5)+1;
+state.baseMaxHp=(state.baseMaxHp??48)+1;
+syncPillarHealth(state,state.baseMaxHp);
+   healed=Math.min(10,Math.max(0,state.maxHp-state.hp));
+state.hp+=healed;
   }
-  state.pillarOffers=[];state.phase='pending';return {id,kind:id,healed};
+  state.pillarOffers=[];
+state.phase='pending';
+return {id,kind:id,healed};
  }
- const key=state.floor===20?id:pillarKey(id);state.inventory[key]=(state.inventory[key]||0)+1;
- state.pillarOffers=[];state.phase='pending';
+ const key=state.floor===20?id:pillarKey(id);
+state.inventory[key]=(state.inventory[key]||0)+1;
+ state.pillarOffers=[];
+state.phase='pending';
  return {id,key};
 }
 
@@ -867,17 +979,45 @@ Object.assign(__exports,{PILLARS,getPillar,pillarKey,activePillars,pillarMods,sy
 "playback.js":function(__load,__exports){
 "use strict";
 // Presentation only: never touches RNG, combat values or AudioContext timing.
-function frameDelay(kind,base,speed){return Math.max(['block','player-hit','heal','enemy-heal'].includes(kind)?550:0,base/speed);}
-function needsDecision(state){return !!(state.requiresChoice||state.pendingChoice||['choice','merchant','familiar-choice'].includes(state.phase));}
+function frameDelay(kind,base,speed){return Math.max(['block','player-hit','heal','enemy-heal'].includes(kind)?550:0,base/speed);
+}
+function needsDecision(state){return !!(state.requiresChoice||state.pendingChoice||['choice','merchant','familiar-choice'].includes(state.phase));
+}
 function createAuto({step,canRun,onChange=()=>{},getSpeed=()=>1,timers=globalThis}){
  let enabled=false,timer=null,running=false,generation=0;
- function stop(){enabled=false;generation++;if(timer!==null)timers.clearTimeout(timer);timer=null;onChange(false);}
- function schedule(){if(!enabled||running||timer!==null)return;timer=timers.setTimeout(run,Math.max(300,650/getSpeed()));}
- async function run(){timer=null;if(!enabled)return;if(!canRun()){stop();return;}running=true;const token=generation;
-  try{await step();}catch{stop();}finally{running=false;if(enabled&&token===generation){if(canRun())schedule();else stop();}else if(enabled)schedule();}
+ function stop(){enabled=false;
+generation++;
+if(timer!==null)timers.clearTimeout(timer);
+timer=null;
+onChange(false);
+}
+ function schedule(){if(!enabled||running||timer!==null)return;
+timer=timers.setTimeout(run,Math.max(300,650/getSpeed()));
+}
+ async function run(){timer=null;
+if(!enabled)return;
+if(!canRun()){stop();
+return;
+}running=true;
+const token=generation;
+  try{await step();
+}catch{stop();
+}finally{running=false;
+if(enabled&&token===generation){if(canRun())schedule();
+else stop();
+}else if(enabled)schedule();
+}
  }
- function start(){if(enabled)return;if(!canRun())return;enabled=true;generation++;onChange(true);schedule();}
- return {start,stop,toggle(){enabled?stop():start();},get enabled(){return enabled;}};
+ function start(){if(enabled)return;
+if(!canRun())return;
+enabled=true;
+generation++;
+onChange(true);
+schedule();
+}
+ return {start,stop,toggle(){enabled?stop():start();
+},get enabled(){return enabled;
+}};
 }
 
 Object.assign(__exports,{frameDelay,needsDecision,createAuto});
@@ -888,28 +1028,58 @@ const {CONFIG,STONES,stoneFamily}=__load("data.js");
 const {applyPillarStats,pillarMods}=__load("pillars.js");
 const adjacent=(a,b)=>Math.abs(Math.floor(a/3)-Math.floor(b/3))+Math.abs(a%3-b%3)===1;
 function calculate(board,blocked=-1,pillar=null,state=null){
- if(pillar&&typeof pillar==='object'){state=pillar;pillar=state.pillar||null;}
+ if(pillar&&typeof pillar==='object'){state=pillar;
+pillar=state.pillar||null;
+}
  const effectiveBlocked=pillarMods(board).ignoreSeal?-1:blocked;
  const b=board.map((s,i)=>i===effectiveBlocked?null:s);
  const stats={attack:state?.baseAttack??CONFIG.baseAttack,defense:CONFIG.baseDefense,regen:0,safeHeal:CONFIG.safeHeal};
  const synergies=[];
- const add=(name,cells,effect)=>{synergies.push({name,cells,effect});for(const [k,v] of Object.entries(effect))stats[k]+=v;};
- b.forEach(s=>{if(s){for(const [k,v] of Object.entries(STONES[s].base))stats[k]+=v;if(stoneFamily(s)==='moss')stats.safeHeal+=STONES[s].upper?2:1;}});
- b.forEach((key,i)=>{if(key==='rage'&&((i%3>0&&b[i-1]==='core')||(i%3<2&&b[i+1]==='core')))stats.defense+=5;});
+ const add=(name,cells,effect)=>{synergies.push({name,cells,effect});
+for(const [k,v] of Object.entries(effect))stats[k]+=v;
+};
+ b.forEach(s=>{if(s){for(const [k,v] of Object.entries(STONES[s].base))stats[k]+=v;
+if(stoneFamily(s)==='moss')stats.safeHeal+=STONES[s].upper?2:1;
+}});
+ b.forEach((key,i)=>{if(key==='rage'&&((i%3>0&&b[i-1]==='core')||(i%3<2&&b[i+1]==='core')))stats.defense+=5;
+});
  b.forEach((key,i)=>{const s=stoneFamily(key);
-  if(s==='ember')b.forEach((t,j)=>{if(stoneFamily(t)==='moss'&&adjacent(i,j))add('薪の息吹',[i,j],{attack:2});});
-  if(s==='ember'&&key==='upper:ember'){const neighbors=b.flatMap((t,j)=>stoneFamily(t)==='moss'&&adjacent(i,j)?[j]:[]);if(neighbors.length>=2)add('熾燠の薪床',[i,...neighbors],{attack:2});}
-  if(s==='tide'&&adjacent(i,4)){add('核の潮汐',[i,4],{attack:2});if(key==='upper:tide')add('深潮の結界',[i,4],{defense:1});}
-  if(s==='moss'){const j=b.findIndex((t,j)=>stoneFamily(t)==='tide'&&adjacent(i,j));if(j>=0){add('潤う苔庭',[i,j],{regen:1});const ember=b.findIndex((t,j)=>stoneFamily(t)==='ember'&&adjacent(i,j));if(key==='upper:moss'&&ember>=0)add('霊苔の温床',[i,j,ember],{regen:1});}}
-  if(s==='iron'){if([0,2,6,8].includes(i))add('隅の砦',[i],{defense:key==='upper:iron'?2:1});else if(key==='upper:iron')stats.attack--;}
-  if(s==='void'){const empty=board.flatMap((t,j)=>!t&&adjacent(i,j)?[j]:[]);if(empty.length)add('空白の力',[i,...empty],{attack:empty.length*(key==='upper:void'?2:1)});}
+  if(s==='ember')b.forEach((t,j)=>{if(stoneFamily(t)==='moss'&&adjacent(i,j))add('薪の息吹',[i,j],{attack:2});
+});
+  if(s==='ember'&&key==='upper:ember'){const neighbors=b.flatMap((t,j)=>stoneFamily(t)==='moss'&&adjacent(i,j)?[j]:[]);
+if(neighbors.length>=2)add('熾燠の薪床',[i,...neighbors],{attack:2});
+}
+  if(s==='tide'&&adjacent(i,4)){add('核の潮汐',[i,4],{attack:2});
+if(key==='upper:tide')add('深潮の結界',[i,4],{defense:1});
+}
+  if(s==='moss'){const j=b.findIndex((t,j)=>stoneFamily(t)==='tide'&&adjacent(i,j));
+if(j>=0){add('潤う苔庭',[i,j],{regen:1});
+const ember=b.findIndex((t,j)=>stoneFamily(t)==='ember'&&adjacent(i,j));
+if(key==='upper:moss'&&ember>=0)add('霊苔の温床',[i,j,ember],{regen:1});
+}}
+  if(s==='iron'){if([0,2,6,8].includes(i))add('隅の砦',[i],{defense:key==='upper:iron'?2:1});
+else if(key==='upper:iron')stats.attack--;
+}
+  if(s==='void'){const empty=board.flatMap((t,j)=>!t&&adjacent(i,j)?[j]:[]);
+if(empty.length)add('空白の力',[i,...empty],{attack:empty.length*(key==='upper:void'?2:1)});
+}
  });
- for(const row of [[0,1,2],[3,4,5],[6,7,8]]){const values=row.map(i=>stoneFamily(b[i]));if(values.includes('spark')&&values.every(Boolean)&&new Set(values).size===3){add('三色の雷路',row,{attack:4});for(const i of row)if(b[i]==='upper:spark')add('轟雷の奔流',row,{attack:2});}}
- for(const col of [[0,3,6],[1,4,7],[2,5,8]]){const values=col.map(i=>stoneFamily(b[i]));if(values.every(Boolean)&&values.includes('iron')&&values.includes('tide')&&new Set(values).size===3)add('水晶の支柱',col,{defense:2});}
- for(const diagonal of [[0,4,8],[2,4,6]])if(diagonal.every(i=>b[i])&&diagonal.some(i=>stoneFamily(b[i])==='mirror')){add('鏡の星座',diagonal,{attack:2,regen:1});for(const i of diagonal)if(b[i]==='upper:mirror')add('月鏡の星光',diagonal,{attack:2});}
+ for(const row of [[0,1,2],[3,4,5],[6,7,8]]){const values=row.map(i=>stoneFamily(b[i]));
+if(values.includes('spark')&&values.every(Boolean)&&new Set(values).size===3){add('三色の雷路',row,{attack:4});
+for(const i of row)if(b[i]==='upper:spark')add('轟雷の奔流',row,{attack:2});
+}}
+ for(const col of [[0,3,6],[1,4,7],[2,5,8]]){const values=col.map(i=>stoneFamily(b[i]));
+if(values.every(Boolean)&&values.includes('iron')&&values.includes('tide')&&new Set(values).size===3)add('水晶の支柱',col,{defense:2});
+}
+ for(const diagonal of [[0,4,8],[2,4,6]])if(diagonal.every(i=>b[i])&&diagonal.some(i=>stoneFamily(b[i])==='mirror')){add('鏡の星座',diagonal,{attack:2,regen:1});
+for(const i of diagonal)if(b[i]==='upper:mirror')add('月鏡の星光',diagonal,{attack:2});
+}
  // Caps keep repetitive defense / regeneration builds from becoming invulnerable.
- stats.attack=Math.max(1,stats.attack);stats.defense=Math.max(0,stats.defense);stats.regen=Math.max(0,stats.regen);
- stats.synergies=synergies;applyPillarStats(stats,board,{...(state||{}),pillar,sealed:effectiveBlocked});
+ stats.attack=Math.max(1,stats.attack);
+stats.defense=Math.max(0,stats.defense);
+stats.regen=Math.max(0,stats.regen);
+ stats.synergies=synergies;
+applyPillarStats(stats,board,{...(state||{}),pillar,sealed:effectiveBlocked});
  return {...stats,synergies,blocked:effectiveBlocked};
 }
 
